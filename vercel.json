@@ -1,7 +1,8 @@
 {
   "functions": {
     "src/main.py": {
-      "includeFiles": "{prompts/**,src/static/**}"
+      "includeFiles": "{prompts/**,src/static/**}",
+      "maxDuration": 60
     }
   }
 }

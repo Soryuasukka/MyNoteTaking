@@ -34,8 +34,14 @@ if database_url:
             database_url = database_url.replace(prefix, 'postgresql+psycopg://', 1)
             break
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    # Neon's pooler already multiplexes connections, don't stack another pool
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        # Neon's pooler already multiplexes connections, don't stack another pool
+        'poolclass': NullPool,
+        # psycopg auto-prepares statements after 5 uses; PgBouncer in transaction
+        # mode may route the next transaction to another backend, which surfaces
+        # as an intermittent DuplicatePreparedStatement. SQLAlchemy won't set this.
+        'connect_args': {'prepare_threshold': None},
+    }
 else:
     # configure database to use repository-root `database/app.db`
     DB_PATH = os.path.join(ROOT_DIR, 'database', 'app.db')
