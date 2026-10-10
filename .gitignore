@@ -74,7 +74,7 @@ venv.bak/
 .ipynb_checkpoints
 
 # pyenv
-.python-version
+# .python-version stays tracked: Vercel reads it to pick the Python runtime version
 
 # pipenv
 Pipfile.lock

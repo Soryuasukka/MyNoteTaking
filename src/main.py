@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory
 from flask_cors import CORS
+from sqlalchemy.pool import NullPool
 
 ROOT_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 load_dotenv(os.path.join(ROOT_DIR, '.env'))
@@ -16,7 +17,7 @@ from src.routes.note import note_bp
 from src.models.note import Note
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-only-insecure-secret')
 
 # Enable CORS for all routes
 CORS(app)
@@ -24,12 +25,23 @@ CORS(app)
 # register blueprints
 app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(note_bp, url_prefix='/api')
-# configure database to use repository-root `database/app.db`
-DB_PATH = os.path.join(ROOT_DIR, 'database', 'app.db')
-# ensure database directory exists
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
+# Database: Postgres in production via DATABASE_URL, SQLite for local dev
+database_url = os.getenv('DATABASE_URL')
+if database_url:
+    # Neon hands out `postgres://`; SQLAlchemy needs the driver spelled out
+    for prefix in ('postgres://', 'postgresql://'):
+        if database_url.startswith(prefix):
+            database_url = database_url.replace(prefix, 'postgresql+psycopg://', 1)
+            break
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    # Neon's pooler already multiplexes connections, don't stack another pool
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
+else:
+    # configure database to use repository-root `database/app.db`
+    DB_PATH = os.path.join(ROOT_DIR, 'database', 'app.db')
+    # ensure database directory exists
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 with app.app_context():
