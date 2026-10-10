@@ -1,7 +1,65 @@
+import json
+import os
+
 from flask import Blueprint, jsonify, request
+from openai import OpenAI
 from src.models.note import Note, db
 
 note_bp = Blueprint('note', __name__)
+
+@note_bp.route('/notes/translate', methods=['POST'])
+def translate_note():
+    """Translate a note title and content using OpenRouter."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON request body is required'}), 400
+
+    title = data.get('title')
+    content = data.get('content')
+    target_language = data.get('target_language')
+    if not all(isinstance(value, str) for value in (title, content, target_language)):
+        return jsonify({'error': 'Title, content, and target language are required'}), 400
+    if not target_language.strip():
+        return jsonify({'error': 'Target language is required'}), 400
+
+    api_key = os.getenv('OPEN_ROUTER_KEY')
+    if not api_key:
+        return jsonify({'error': 'Translation is not configured on the server'}), 503
+
+    prompt_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'prompts',
+        'translate_prompt.md'
+    )
+
+    try:
+        with open(prompt_path, encoding='utf-8') as prompt_file:
+            system_prompt = prompt_file.read().replace('{target_language}', target_language.strip())
+
+        client = OpenAI(
+            base_url='https://openrouter.ai/api/v1',
+            api_key=api_key
+        )
+        response = client.chat.completions.create(
+            model='deepseek/deepseek-chat',  # OpenAI/Google models are geo-blocked on OpenRouter here
+            response_format={'type': 'json_object'},
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': json.dumps({'title': title, 'content': content}, ensure_ascii=False)}
+            ]
+        )
+
+        translated = json.loads(response.choices[0].message.content)
+        if not isinstance(translated, dict) or not all(
+            isinstance(translated.get(field), str) for field in ('title', 'content')
+        ):
+            return jsonify({'error': 'Translation service returned an invalid response'}), 502
+
+        return jsonify({'title': translated['title'], 'content': translated['content']})
+    except Exception:
+        from flask import current_app
+        current_app.logger.exception('Translation request failed')
+        return jsonify({'error': 'Translation failed. Please try again.'}), 502
 
 @note_bp.route('/notes', methods=['GET'])
 def get_notes():

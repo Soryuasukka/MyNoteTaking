@@ -168,6 +168,8 @@
         .editor-actions {
             display: flex;
             gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
         .btn {
@@ -198,6 +200,29 @@
         .btn-delete:hover {
             background: #c82333;
             transform: translateY(-1px);
+        }
+
+        .btn-translate {
+            background: #176b64;
+            color: white;
+        }
+
+        .btn-translate:hover {
+            background: #12564f;
+            transform: translateY(-1px);
+        }
+
+        .btn-translate:disabled {
+            opacity: 0.65;
+            cursor: wait;
+            transform: none;
+        }
+
+        .translate-language {
+            width: auto;
+            min-width: 140px;
+            padding: 8px 10px;
+            font-size: 14px;
         }
 
         .form-group {
@@ -344,6 +369,17 @@
                 <div class="editor-header">
                     <h2 class="editor-title" id="editorTitle">Select a note to edit</h2>
                     <div class="editor-actions" id="editorActions" style="display: none;">
+                        <select class="form-input translate-language" id="translateLanguage" aria-label="Translation language">
+                            <option value="Spanish">Spanish</option>
+                            <option value="French">French</option>
+                            <option value="German">German</option>
+                            <option value="Italian">Italian</option>
+                            <option value="Japanese">Japanese</option>
+                            <option value="Korean">Korean</option>
+                            <option value="Portuguese">Portuguese</option>
+                            <option value="Chinese">Chinese</option>
+                        </select>
+                        <button class="btn btn-translate" id="translateBtn">Translate</button>
                         <button class="btn btn-save" id="saveBtn">💾 Save</button>
                         <button class="btn btn-delete" id="deleteBtn">🗑️ Delete</button>
                     </div>
@@ -389,6 +425,7 @@
                 document.getElementById('newNoteBtn').addEventListener('click', () => this.createNewNote());
                 document.getElementById('saveBtn').addEventListener('click', () => this.saveNote());
                 document.getElementById('deleteBtn').addEventListener('click', () => this.deleteNote());
+                document.getElementById('translateBtn').addEventListener('click', () => this.translateNote());
                 document.getElementById('searchBox').addEventListener('input', (e) => this.searchNotes(e.target.value));
                 
                 // Auto-save on content change (debounced)
@@ -404,6 +441,52 @@
                 
                 document.getElementById('noteTitle').addEventListener('input', autoSave);
                 document.getElementById('noteContent').addEventListener('input', autoSave);
+            }
+
+            async translateNote() {
+                if (!this.currentNote) return;
+
+                const noteBeingTranslated = this.currentNote;
+                const translateButton = document.getElementById('translateBtn');
+                const titleInput = document.getElementById('noteTitle');
+                const contentInput = document.getElementById('noteContent');
+                translateButton.disabled = true;
+                translateButton.textContent = 'Translating...';
+                titleInput.disabled = true;
+                contentInput.disabled = true;
+                this.showMessage('Translating note...', 'loading');
+
+                try {
+                    const response = await fetch('/api/notes/translate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: titleInput.value,
+                            content: contentInput.value,
+                            target_language: document.getElementById('translateLanguage').value
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Translation failed');
+                    if (this.currentNote !== noteBeingTranslated) return;
+
+                    titleInput.value = result.title;
+                    contentInput.value = result.content;
+                    this.currentNote.title = result.title;
+                    this.currentNote.content = result.content;
+                    document.getElementById('editorTitle').textContent = result.title || 'Untitled Note';
+                    this.renderNotesList();
+                    titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    contentInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    this.showMessage('Note translated. Changes will be saved automatically.', 'success');
+                } catch (error) {
+                    this.showMessage(`Error translating note: ${this.escapeHtml(error.message)}`, 'error');
+                } finally {
+                    translateButton.disabled = false;
+                    translateButton.textContent = 'Translate';
+                    titleInput.disabled = false;
+                    contentInput.disabled = false;
+                }
             }
 
             async loadNotes() {
